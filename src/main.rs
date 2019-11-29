@@ -426,6 +426,17 @@ impl EventHandler for Game {
             _ => {}
         }
     }
+
+    fn key_up_event(&mut self, _ctx: &mut Context, keycode: KeyCode, _keymods: KeyMods) {
+        match keycode {
+            KeyCode::Q => {
+                // remove last added start position
+                self.starts.pop();
+            }
+            _ => {
+            }
+        }
+    }
 }
 
 fn main() -> GameResult {
