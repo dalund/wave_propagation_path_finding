@@ -431,7 +431,9 @@ impl EventHandler for Game {
         match keycode {
             KeyCode::Q => {
                 // remove last added start position
-                self.starts.pop();
+                if self.starts.len() > 1 {
+                    self.starts.pop();
+                }
             }
             _ => {
             }
