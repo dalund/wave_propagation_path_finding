@@ -301,20 +301,27 @@ impl EventHandler for Game {
 
     fn draw(&mut self, ctx: &mut Context) -> GameResult<()> {
         graphics::clear(ctx, BLUE.into());
+
+        // draw grid
         for mesh in &self.grid_mesh {
             graphics::draw(ctx, mesh, graphics::DrawParam::new())?;
         }
-        for obstacle in self.game_map.iter() {
-            if obstacle.on {
+
+        // draw tile
+        for tile in self.game_map.iter() {
+            if tile.on {
                 let rectangle = graphics::Mesh::new_rectangle(
                     ctx,
                     graphics::DrawMode::fill(),
-                    obstacle.into(),
+                    tile.into(),
                     GRAY.into(),
                 )?;
                 graphics::draw(ctx, &rectangle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
             }
         }
+
+
+        // draw start and end
         let start = &self.start;
         let rectangle = graphics::Mesh::new_rectangle(
             ctx,
@@ -329,6 +336,8 @@ impl EventHandler for Game {
             graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(), end.into(), RED.into())?;
         graphics::draw(ctx, &rectangle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
 
+
+        // draw path
         let mut first_point = true;
         let mut o_x = 0;
         let mut o_y = 0;
@@ -407,8 +416,6 @@ fn main() -> GameResult {
             )
             // Now we get to set the size of the window, which we use our SCREEN_SIZE constant from earlier to help with
             .window_mode(ggez::conf::WindowMode::default().dimensions(SCREEN_SIZE.0, SCREEN_SIZE.1))
-            // add resource path
-            //.add_resource_path(resource_dir)
             // And finally we attempt to build the context and create the window. If it fails, we panic with the message
             // "Failed to build ggez context"
             .build()?;
@@ -419,9 +426,6 @@ fn main() -> GameResult {
     event::run(ctx, events_loop, state)
 }
 
-fn to_screen(x: i32, y: i32) -> Point2 {
-    Point2::new((x * GRID_CELL_SIZE.0) as f32, (y * GRID_CELL_SIZE.1) as f32)
-}
 fn to_screen_circle(x: i32, y: i32) -> Point2 {
     Point2::new(
         (x * GRID_CELL_SIZE.0 + (GRID_CELL_SIZE.0 / 2)) as f32,
