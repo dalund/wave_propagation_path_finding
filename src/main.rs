@@ -151,13 +151,6 @@ impl EventHandler for Game {
                         self.flow_field_map_z[get_index(x, y)] = 0;
 
                     }
-
-                    // draw distace string
-                    let text = graphics::Text::new(
-                        graphics::TextFragment::new(format!("{}", self.flow_field_map_z[ get_index(x, y)])) .color(graphics::BLACK),
-                    );
-                    graphics::draw(ctx, &text, graphics::DrawParam::default().dest(to_screen(x, y)))?;
-
                 }
             }
 
@@ -196,7 +189,7 @@ impl EventHandler for Game {
                 }
 
                 new_nodes.sort();
-                new_nodes.dedup();
+                new_nodes.dedup(); // remove duplicates. Have to sort first.
 
                 nodes.clear();
                 nodes = new_nodes.drain(0..).collect();
