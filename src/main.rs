@@ -1,6 +1,7 @@
-use ggez::event::{EventHandler, MouseButton};
+use ggez::event::{EventHandler, MouseButton, KeyCode, KeyMods};
 use ggez::timer;
 use ggez::{event, graphics, Context, GameResult};
+use ggez::input::keyboard;
 
 const GRID_CELL_SIZE: (i32, i32) = (45, 45);
 const GRID_SIZE: (i32, i32) = (16, 16);
@@ -55,9 +56,9 @@ struct Game {
     game_map: Vec<GridPosition>,
     flow_field_map_z: Vec<i32>,
     grid_mesh: Vec<graphics::Mesh>,
-    start: GridPosition,
+    starts: Vec<GridPosition>,
     end: GridPosition,
-    path: Vec<(i32, i32)>,
+    paths: Vec<Vec<(i32, i32)>>,
 }
 impl Game {
     fn new(ctx: &mut Context) -> GameResult<Game> {
@@ -108,11 +109,119 @@ impl Game {
         Ok(Game {
             game_map,
             grid_mesh,
-            start: GridPosition::new(11, 5, false),
+            starts: vec![GridPosition::new(11, 5, false)],
             end: GridPosition::new(4, 5, false),
             flow_field_map_z,
-            path: vec![],
+            paths: vec![vec![]],
         })
+    }
+
+    fn calculate_path(&self,start: &GridPosition)  -> Vec<(i32, i32)> {
+       let mut path: Vec<(i32, i32)> = vec![];
+        path.push((start.x, start.y));
+        let mut loc_x = start.x;
+        let mut loc_y = start.y;
+        let mut no_path = false;
+
+        while !(loc_x == self.end.x && loc_y == self.end.y) && !no_path {
+            let mut list_neightbours: Vec<(i32, i32, i32)> = vec![];
+
+            // 4-Way Connectivity
+            if loc_y - 1 >= 0 && self.flow_field_map_z[get_index(loc_x, loc_y - 1)] > 0 {
+                list_neightbours.push((
+                    loc_x,
+                    loc_y - 1,
+                    self.flow_field_map_z[get_index(loc_x, loc_y - 1)],
+                ));
+            }
+
+            if (loc_x + 1) < GRID_SIZE.1
+                && self.flow_field_map_z[get_index(loc_x + 1, loc_y)] > 0
+            {
+                list_neightbours.push((
+                    loc_x + 1,
+                    loc_y,
+                    self.flow_field_map_z[get_index(loc_x + 1, loc_y)],
+                ));
+            }
+
+            if (loc_y + 1) < GRID_SIZE.0
+                && self.flow_field_map_z[get_index(loc_x, loc_y + 1)] > 0
+            {
+                list_neightbours.push((
+                    loc_x,
+                    loc_y + 1,
+                    self.flow_field_map_z[get_index(loc_x, loc_y + 1)],
+                ));
+            }
+
+            if (loc_x - 1) >= 0 && self.flow_field_map_z[get_index(loc_x - 1, loc_y)] > 0 {
+                list_neightbours.push((
+                    loc_x - 1,
+                    loc_y,
+                    self.flow_field_map_z[get_index(loc_x - 1, loc_y)],
+                ));
+            }
+
+            // 8-Way Connectivity
+            if (loc_y - 1) >= 0
+                && (loc_x - 1) >= 0
+                && self.flow_field_map_z[get_index(loc_x - 1, loc_y - 1)] > 0
+            {
+                list_neightbours.push((
+                    loc_x - 1,
+                    loc_y - 1,
+                    self.flow_field_map_z[get_index(loc_x - 1, loc_y - 1)],
+                ));
+            }
+
+            if (loc_y - 1) >= 0
+                && (loc_x + 1) < GRID_SIZE.1
+                && self.flow_field_map_z[get_index(loc_x + 1, loc_y - 1)] > 0
+            {
+                list_neightbours.push((
+                    loc_x + 1,
+                    loc_y - 1,
+                    self.flow_field_map_z[get_index(loc_x + 1, loc_y - 1)],
+                ));
+            }
+
+            if (loc_y + 1) < GRID_SIZE.0
+                && (loc_x - 1) >= 0
+                && self.flow_field_map_z[get_index(loc_x - 1, loc_y + 1)] > 0
+            {
+                list_neightbours.push((
+                    loc_x - 1,
+                    loc_y + 1,
+                    self.flow_field_map_z[get_index(loc_x - 1, loc_y + 1)],
+                ));
+            }
+
+            if (loc_y + 1) < GRID_SIZE.0
+                && (loc_x + 1) < GRID_SIZE.1
+                && self.flow_field_map_z[get_index(loc_x + 1, loc_y + 1)] > 0
+            {
+                list_neightbours.push((
+                    loc_x + 1,
+                    loc_y + 1,
+                    self.flow_field_map_z[get_index(loc_x + 1, loc_y + 1)],
+                ));
+            }
+
+            // Sprt neigbours based on height, so lowest neighbour is at front
+            // of list
+            list_neightbours.sort_by_key(|k| k.2);
+
+            if list_neightbours.is_empty() {
+                // Neighbour is invalid or no possible path
+                no_path = true;
+            } else {
+                loc_x = list_neightbours[0].0;
+                loc_y = list_neightbours[0].1;
+                path.push((loc_x, loc_y));
+            }
+        }
+        path
     }
 }
 
@@ -131,6 +240,7 @@ impl Node {
     fn new(x: i32, y: i32, d: i32) -> Node {
         Node { x, y, d }
     }
+
 }
 
 impl EventHandler for Game {
@@ -189,111 +299,13 @@ impl EventHandler for Game {
                 nodes.clear();
                 nodes = new_nodes.drain(0..).collect();
             }
-            let mut path: Vec<(i32, i32)> = vec![];
-            path.push((self.start.x, self.start.y));
-            let mut loc_x = self.start.x;
-            let mut loc_y = self.start.y;
-            let mut no_path = false;
 
-            while !(loc_x == self.end.x && loc_y == self.end.y) && !no_path {
-                let mut list_neightbours: Vec<(i32, i32, i32)> = vec![];
+            self.paths.clear();
+            for (i, start) in self.starts.iter().enumerate() {
+                let path = self.calculate_path(start);
 
-                // 4-Way Connectivity
-                if loc_y - 1 >= 0 && self.flow_field_map_z[get_index(loc_x, loc_y - 1)] > 0 {
-                    list_neightbours.push((
-                        loc_x,
-                        loc_y - 1,
-                        self.flow_field_map_z[get_index(loc_x, loc_y - 1)],
-                    ));
-                }
-
-                if (loc_x + 1) < GRID_SIZE.1
-                    && self.flow_field_map_z[get_index(loc_x + 1, loc_y)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x + 1,
-                        loc_y,
-                        self.flow_field_map_z[get_index(loc_x + 1, loc_y)],
-                    ));
-                }
-
-                if (loc_y + 1) < GRID_SIZE.0
-                    && self.flow_field_map_z[get_index(loc_x, loc_y + 1)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x,
-                        loc_y + 1,
-                        self.flow_field_map_z[get_index(loc_x, loc_y + 1)],
-                    ));
-                }
-
-                if (loc_x - 1) >= 0 && self.flow_field_map_z[get_index(loc_x - 1, loc_y)] > 0 {
-                    list_neightbours.push((
-                        loc_x - 1,
-                        loc_y,
-                        self.flow_field_map_z[get_index(loc_x - 1, loc_y)],
-                    ));
-                }
-
-                // 8-Way Connectivity
-                if (loc_y - 1) >= 0
-                    && (loc_x - 1) >= 0
-                    && self.flow_field_map_z[get_index(loc_x - 1, loc_y - 1)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x - 1,
-                        loc_y - 1,
-                        self.flow_field_map_z[get_index(loc_x - 1, loc_y - 1)],
-                    ));
-                }
-
-                if (loc_y - 1) >= 0
-                    && (loc_x + 1) < GRID_SIZE.1
-                    && self.flow_field_map_z[get_index(loc_x + 1, loc_y - 1)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x + 1,
-                        loc_y - 1,
-                        self.flow_field_map_z[get_index(loc_x + 1, loc_y - 1)],
-                    ));
-                }
-
-                if (loc_y + 1) < GRID_SIZE.0
-                    && (loc_x - 1) >= 0
-                    && self.flow_field_map_z[get_index(loc_x - 1, loc_y + 1)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x - 1,
-                        loc_y + 1,
-                        self.flow_field_map_z[get_index(loc_x - 1, loc_y + 1)],
-                    ));
-                }
-
-                if (loc_y + 1) < GRID_SIZE.0
-                    && (loc_x + 1) < GRID_SIZE.1
-                    && self.flow_field_map_z[get_index(loc_x + 1, loc_y + 1)] > 0
-                {
-                    list_neightbours.push((
-                        loc_x + 1,
-                        loc_y + 1,
-                        self.flow_field_map_z[get_index(loc_x + 1, loc_y + 1)],
-                    ));
-                }
-
-                // Sprt neigbours based on height, so lowest neighbour is at front
-                // of list
-                list_neightbours.sort_by_key(|k| k.2);
-
-                if list_neightbours.is_empty() {
-                    // Neighbour is invalid or no possible path
-                    no_path = true;
-                } else {
-                    loc_x = list_neightbours[0].0;
-                    loc_y = list_neightbours[0].1;
-                    path.push((loc_x, loc_y));
-                }
+                self.paths.push(path.to_vec());
             }
-            self.path = path;
         }
 
         Ok(())
@@ -322,15 +334,17 @@ impl EventHandler for Game {
 
 
         // draw start and end
-        let start = &self.start;
-        let rectangle = graphics::Mesh::new_rectangle(
-            ctx,
-            graphics::DrawMode::fill(),
-            start.into(),
-            GREEN.into(),
-        )?;
-        graphics::draw(ctx, &rectangle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+        for start in &self.starts {
+            let rectangle = graphics::Mesh::new_rectangle(
+                ctx,
+                graphics::DrawMode::fill(),
+                start.into(),
+                GREEN.into(),
+            )?;
+            graphics::draw(ctx, &rectangle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
 
+
+        }
         let end = &self.end;
         let rectangle =
             graphics::Mesh::new_rectangle(ctx, graphics::DrawMode::fill(), end.into(), RED.into())?;
@@ -338,36 +352,38 @@ impl EventHandler for Game {
 
 
         // draw path
-        let mut first_point = true;
-        let mut o_x = 0;
-        let mut o_y = 0;
-        for t in &self.path {
-            if first_point {
-                o_x = t.0;
-                o_y = t.1;
-                first_point = false;
-            } else {
-                // draw connecting line
-                let line = graphics::Mesh::new_line(
-                    ctx,
-                    &[to_screen_circle(o_x, o_y), to_screen_circle(t.0, t.1)],
-                    2.0,
-                    YELLOW.into(),
-                )?;
+        for path in &self.paths {
+            let mut first_point = true;
+            let mut o_x = 0;
+            let mut o_y = 0;
+            for t in path {
+                if first_point {
+                    o_x = t.0;
+                    o_y = t.1;
+                    first_point = false;
+                } else {
+                    // draw connecting line
+                    let line = graphics::Mesh::new_line(
+                        ctx,
+                        &[to_screen_circle(o_x, o_y), to_screen_circle(t.0, t.1)],
+                        2.0,
+                        YELLOW.into(),
+                    )?;
 
-                o_x = t.0;
-                o_y = t.1;
+                    o_x = t.0;
+                    o_y = t.1;
 
-                let circle = graphics::Mesh::new_circle(
-                    ctx,
-                    graphics::DrawMode::fill(),
-                    to_screen_circle(o_x, o_y),
-                    14.0,
-                    0.2,
-                    YELLOW.into(),
-                )?;
-                graphics::draw(ctx, &line, graphics::DrawParam::default())?;
-                graphics::draw(ctx, &circle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+                    let circle = graphics::Mesh::new_circle(
+                        ctx,
+                        graphics::DrawMode::fill(),
+                        to_screen_circle(o_x, o_y),
+                        14.0,
+                        0.2,
+                        YELLOW.into(),
+                    )?;
+                    graphics::draw(ctx, &line, graphics::DrawParam::default())?;
+                    graphics::draw(ctx, &circle, (ggez::mint::Point2 { x: 0.0, y: 0.0 },))?;
+                }
             }
         }
 
@@ -389,10 +405,11 @@ impl EventHandler for Game {
         Ok(())
     }
 
-    fn mouse_button_up_event(&mut self, _ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
+    fn mouse_button_up_event(&mut self, ctx: &mut Context, button: MouseButton, x: f32, y: f32) {
         // convert screen x and y to grid positions
         let grid_x: i32 = x as i32 / GRID_CELL_SIZE.0;
         let grid_y: i32 = y as i32 / GRID_CELL_SIZE.1;
+        let newlen = self.starts.len() - 1;
         match button {
             MouseButton::Left => {
                 // get obstacle selected
@@ -400,7 +417,11 @@ impl EventHandler for Game {
                 ob.on = !ob.on;
             }
             MouseButton::Right => {
-                self.start = GridPosition::new(grid_x, grid_y, false);
+                if keyboard::is_mod_active(ctx, KeyMods::SHIFT) {
+                    self.starts.push(GridPosition::new(grid_x, grid_y, false));
+                } else {
+                    self.starts[newlen] = GridPosition::new(grid_x, grid_y, false);
+                }
             }
             _ => {}
         }
